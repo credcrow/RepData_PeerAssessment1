@@ -1,0 +1,208 @@
+---
+title: "Peer Assignment 1"
+author: "Cyril C. Redcrow"
+date: "January 17, 2015"
+output: html_document
+---
+#Coursera:  Reproducible Research
+###Name:  Peer Assignment 1
+###Purpose:  Peer Assessment 1, script 2
+
+Background:  A personal activity monitoring devices measured the steps taken by a person in 5 minute intervals for 24 hours a day during a two month period from 1 October to 30 November 2012.  The data set collected was taken from the following URL.
+
+https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity
+
+It was downloaded on 20150117 as the "activity.csv" data set.  This data set contains three variables:
+
+1.  steps:  Number of steps taken in a 5 minute interval during the day.
+                        Missing value are coded "NA".
+
+2.  data:  The data a measurement is taken.  Format = YYYY-MM-DD.
+
+3.  interval:  Identifier for the 5 minute interval in which the measurement
+                           was taken.
+
+4.  Misc:  The data set is in a CSV file with a total of 17,568 observations
+
+The first step in this analysis process is to load the data into R.
+
+```{r, echo = TRUE}
+rm(list=ls())
+
+library(data.table)
+library(plyr)
+library(dplyr)
+
+setwd("~/Coursera/Reproducible Data/Peer Assignment 1/")
+
+##  Raw Data
+
+data00 <- fread("activity.csv") 
+
+```
+
+Note:  Raw data is a time series of steps taken in 5 minute intervals
+for 24 hour periods measured from a period from October 1, 2012
+to November 30, 2012.  Each day has 288 observations.  The measurement
+period is 61 days.  Total observations = 17568.
+
+In terms of exploratory data analysis, the second step in the analysis process will be to preprocess the data into a more time series friendly format, make an exploratory histogram of the data, and calculate some preliminary statistics.
+
+```{r, echo = TRUE}
+
+# Removing "interval" data column
+data01 <- data00[ , 1:2, with = FALSE] 
+
+# df: Sum: Steps Per Day
+data02 <- ddply(data01, "date", function(x){ 
+  daily.steps <- sum(x$steps)
+  data.frame(sum.steps = daily.steps)
+})
+
+# df: Mean Steps per 5 minute interval.
+data03 <- ddply(data00, "interval", function(x){ 
+  minute.steps <- round(mean(x$steps, na.rm = TRUE), digits = 0)
+  data.frame(mean.steps = minute.steps)
+})
+
+```
+
+
+### Exploratory Analysis Raw Data
+
+```{r, echo = TRUE}
+hist.00 <- hist(data02$sum.steps, main = "Histogram of Steps per Day",
+                xlab = "steps", ylab = "count")
+
+# mean steps per day
+mean.02 <- round(mean(data02$sum.steps, na.rm = TRUE), digits = 0)
+
+# median steps per day
+median.02 <- round(median(data02$sum.steps, na.rm = TRUE), digits = 0)
+
+```
+The initial histogram of the raw data seems fairly normally distributed.  The large size of the bins suggest perhaps a slight skew to the left.  However, the mean and median number of steps at 10766 and 10765 respectively are both extemely close.  This indicates both parameters of central tendency are fairly normally distributed.
+
+### Imputing Missing Values
+This data set has a number of missing observations.  The number of missing values will be determined.  The strategy with respect to missing values will be to replace them with a "0".
+
+```{r, echo = TRUE}
+
+total.na <- sum(is.na(data00$steps)) # total missing values
+
+# df:  Imputed Data Set
+data04 <- data00
+data04[is.na(data04)] <- 0
+
+# df:  Imputed Data Set, Steps summed by day 
+data05 <- ddply(data04, "date", function(x){ 
+  daily.steps <- sum(x$steps)
+  data.frame(sum.steps = daily.steps)
+})
+
+
+
+hist.05 <- hist(data05$sum.steps, main = "Histogram of Steps per Day, NAs Removed",
+                xlab = "steps", ylab = "count")
+
+# mean steps per day, imputed
+mean.imputed <- round(mean(data05$sum.steps, na.rm = TRUE), digits = 0)
+
+# median steps per day, imputed
+median.imputed <- round(median(data05$sum.steps, na.rm = TRUE), digits = 0)
+
+```
+
+Imputation adds 2304 5-minute records of 0-steps taken to the data set.  This
+reduces the mean number of steps to 9354, or a change of 1412 steps.  
+The imputed median is also reduced by a smaller margin of 370 steps.  As per the
+histograms, the imputed dataset skews the distribution more to the left
+as compared to the original dataset.
+
+### Activity Pattern Differences between Weekdays and Weekends
+
+The final step of this analysis will be compare the pattern of steps taken.  A time series will be generate from the data before data set imputation.  Next a comparison time series plots of the imputated data set will compare step pattern activity during the week and during the weekend.
+
+First, the imputed data set will need to add a column indicating the day of the week upon which measurements took place and a factor column indicating if it was a weekday or a weekend.
+
+```{r, echo = TRUE}
+
+# transforming date from "char" to "date"
+data05 <- transform(data05, date = as.Date(date))
+
+# Defining days of the week "Monday...Sunday"
+day <- weekdays(data05[ ,1]) 
+
+# Defining factors "Weekday", "Weekend"
+day.type <-  as.factor(ifelse(weekdays(data05$date) %in% c("Saturday","Sunday"),
+           "Weekend", "Weekday"))
+
+# New df with day and day.type("Weekday", "Weekend")
+data05 <- cbind(data05, day, day.type)
+
+
+## Average Daily Pattern (time series graphs)
+
+# Plot using dataset containing "NA"s.
+mean.daily.steps <- plot(data03$interval, data03$mean.steps,
+                         type = "l", xlab = "Intervals", 
+                         ylab = "Average Steps",
+                         main = "Average Daily Step Pattern")
+
+# Plots using imputed dataset.
+# 2 figures combined
+
+data06 <- as.data.frame(transform(data04, date = as.Date(date)))
+
+# Defining days of the week "Monday...Sunday"
+days <- weekdays(data06[ ,2]) 
+
+# Defining factors "Weekday", "Weekend"
+days.type <-  as.factor(ifelse(weekdays(data06$date) %in% c("Saturday","Sunday"),
+                              "Weekend", "Weekday"))
+
+# New df with day and day.type("Weekday", "Weekend")
+data07 <- cbind(data06, days, days.type)
+
+data07.weekday <- subset(data07, days.type == "Weekday", 
+                         select = c(date, days.type, interval, steps))
+
+data07.weekend <- subset(data07, days.type == "Weekend", 
+                         select = c(date, days.type, interval, steps))
+
+
+# df: Weekday Mean Steps per 5 minute interval.
+data.weekday <- ddply(data07.weekday, "interval", function(x){ 
+  minute.steps <- round(mean(x$steps, na.rm = TRUE), digits = 0)
+  data.frame(mean.steps = minute.steps)
+})
+
+# df: Weekend Mean Steps per 5 minute interval.
+data.weekend <- ddply(data07.weekend, "interval", function(x){ 
+  minute.steps <- round(mean(x$steps, na.rm = TRUE), digits = 0)
+  data.frame(mean.steps = minute.steps)
+})
+
+# Plots using imputed dataset.
+# 2 figures combined
+
+par(mfrow=c(2,1))
+
+plot(data.weekday$interval, data.weekday$mean.steps, type = "l",
+     xlab = "intervals", ylab = "Average Weekday Steps",
+     main="Average Weekday Step Pattern")
+
+plot(data.weekend$interval, data.weekend$mean.steps, type = "l",
+     xlab = "intervals", ylab = "Average Weekend Steps",
+     main="Average Weekend Step Pattern")
+
+plot(data05$day.type, data05$sum.steps, type = "l",
+      main="Weekday vs WeekendStep Pattern")
+
+```
+
+## Conclusion
+
+The average weekday step pattern is quite different from the weekend step pattern.  During the week, the number of steps abruptly declines at the 900th interval.  The weekend step pattern maintains a higher step count level especially from interval 1000 to interval 2000.  In a modern industrial society, this is probably not too surprising that this would roughtly correspond to the 9 am to 5 pm workday.  
+
+I added a boxplot comparing weekday and weekend step data from the imputed data set.  I find it suprising that while the median number of steps between average weekend and weekday is larger it is not vastly greater as the interval step pattern might suggest.  The range of the steps taken during the weekend, however, is much smaller than the range of steps taken during the week. Since this analysis is preliminary, a deeper statistical look at the data is warrented.  
